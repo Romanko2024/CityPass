@@ -1,0 +1,12 @@
+.vs/
+[Bb]in/
+[Oo]bj/
+out/
+*.user
+*.userosscache
+*.sln.docstates
+
+appsettings.json
+appsettings.Development.json
+
+.DS_Store
