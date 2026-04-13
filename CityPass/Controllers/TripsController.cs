@@ -97,7 +97,7 @@ namespace CityPass.Controllers
             // 2. ЛОГІКА ПІЛЬГОВИКА (Monthly Limit)
             if (useBenefits && passenger.Category != null && passenger.Category.DiscountPercent > 0)
             {
-                var startOfMonth = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1);
+                var startOfMonth = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc);
                 var monthlySavings = await _context.Trips
                     .Where(t => t.PassengerId == passenger.PassengerId && t.TripDateTime >= startOfMonth)
                     .SumAsync(t => t.StandardPriceAtMoment - t.FinalPrice);
@@ -115,7 +115,7 @@ namespace CityPass.Controllers
             }
             else
             {
-                var today = DateTime.UtcNow.Date;
+                var today = DateTime.SpecifyKind(DateTime.UtcNow.Date, DateTimeKind.Utc);
 
                 //Daily Cap
                 var spentToday = await _context.Trips
@@ -168,7 +168,7 @@ namespace CityPass.Controllers
             foreach (var discountId in appliedDiscounts)
             {
                 _context.Database.ExecuteSqlRaw(
-                    "INSERT INTO \"TripDiscounts\" (\"TripID\", \"DiscountID\") VALUES ({0}, {1})",
+                    "INSERT INTO \"TripDiscounts\" (\"TripId\", \"DiscountId\") VALUES ({0}, {1})",
                     trip.TripId, discountId);
             }
 

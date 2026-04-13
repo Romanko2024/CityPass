@@ -8,139 +8,167 @@ function App() {
     const [transportId, setTransportId] = useState(1);
     const [isAnonymous, setIsAnonymous] = useState(false);
     const [loading, setLoading] = useState(true);
+    const [topUpAmount, setTopUpAmount] = useState(50);
+    const [isControllerMode, setIsControllerMode] = useState(false);
+    const [verificationResult, setVerificationResult] = useState(null);
 
-    const fetchPassengerData = async () => {
+    const fetchData = async () => {
         try {
-            setLoading(true);
             const res = await fetch(`${API_URL}/Passengers/5`);
-            if (!res.ok) throw new Error("Пасажира не знайдено");
-
+            if (!res.ok) throw new Error();
             const data = await res.json();
             setPassenger(data);
 
             const histRes = await fetch(`${API_URL}/Passengers/5/history`);
-            if (histRes.ok) {
-                const histData = await histRes.json();
-                setHistory(histData);
-            }
-        } catch (error) {
-            console.error("Помилка завантаження:", error);
+            const histData = await histRes.json();
+            setHistory(histData);
+        } catch {
+            console.error("Сервер не відповідає");
         } finally {
             setLoading(false);
         }
     };
 
-    useEffect(() => { fetchPassengerData(); }, []);
+    useEffect(() => { fetchData(); }, []);
 
     const handleTap = async () => {
-        const tripData = {
-            passengerId: 5,
-            transportId: parseInt(transportId),
-            routeNumber: "Маршрут №24",
-            isAnonymousTrip: isAnonymous
-        };
-
-        const res = await fetch(`${API_URL}/Trips`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(tripData)
-        });
-
-        if (res.ok) {
-            alert("Оплата успішна!");
-            fetchPassengerData();
-        } else {
-            const err = await res.text();
-            alert("Помилка: " + err);
+        try {
+            const res = await fetch(`${API_URL}/Trips`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    passengerId: 5,
+                    transportId: parseInt(transportId),
+                    routeNumber: `Маршрут #${Math.floor(Math.random() * 99) + 1}`,
+                    isAnonymousTrip: isAnonymous
+                })
+            });
+            if (res.ok) {
+                alert("✅ Проїзд оплачено успішно!");
+                fetchData();
+            } else {
+                const err = await res.text();
+                alert("❌ Помилка: " + err);
+            }
+        } catch {
+            alert("Помилка з'єднання з API");
         }
     };
 
-    const handleTopUp = async () => {
-        if (!passenger?.wallet?.walletId) return;
-
+    const handleTopUp = async (amount) => {
+        const val = amount || topUpAmount;
         await fetch(`${API_URL}/Wallets/${passenger.wallet.walletId}/topup`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(50)
+            body: JSON.stringify(parseFloat(val))
         });
-        fetchPassengerData();
+        fetchData();
     };
 
-    if (loading) {
-        return (
-            <div className="container p-5 text-center">
-                <div className="spinner-border text-primary" role="status"></div>
-                <p className="mt-3">З'єднуємося з базою даних...</p>
-            </div>
-        );
-    }
+    const handleVerify = async () => {
+        const res = await fetch(`${API_URL}/Trips/verify/${passenger.cardUID}?transportId=${transportId}`);
+        const result = await res.json();
+        setVerificationResult(result);
+    };
+
+    if (loading) return <div className="text-center mt-5">🔌 Підключення до CityPass...</div>;
 
     return (
-        <div className="container mt-5">
-            <h2 className="text-center mb-4">💳 CityPass Simulator</h2>
+        <div className="container mt-4">
+            <div className="d-flex justify-content-between align-items-center mb-4">
+                <h2>CityPass System</h2>
+                <button className={`btn ${isControllerMode ? 'btn-dark' : 'btn-outline-dark'}`}
+                    onClick={() => setIsControllerMode(!isControllerMode)}>
+                    {isControllerMode ? "⬅️ Назад до пасажира" : "🛡️ Режим контролера"}
+                </button>
+            </div>
 
-            <div className="row">
-                {/* ЛІВА ПАНЕЛЬ Картка пасажира */}
-                <div className="col-md-4">
-                    <div className="card shadow mb-4">
-                        <div className="card-header bg-primary text-white">Мій Гаманець</div>
-                        <div className="card-body">
-                            <h5>{passenger?.fullName || "Анонімний користувач"}</h5>
-                            <p className="text-muted small">UID: {passenger?.cardUID || "---"}</p>
-                            <hr />
-                            <h3 className="text-success">
-                                {passenger?.wallet?.balance?.toFixed(2) ?? "0.00"} грн
-                            </h3>
-                            <button onClick={handleTopUp} className="btn btn-outline-primary btn-sm w-100 mt-2">
-                                Поповнити на 50 грн
+            {isControllerMode ? (
+                /* ПАНЕЛЬ КОНТРОЛЕРА */
+                <div className="row justify-content-center">
+                    <div className="col-md-6 card shadow-lg p-5 text-center">
+                        <h4>🔍 Перевірка квитків</h4>
+                        <p className="text-muted">Транспортний засіб №{transportId}</p>
+                        <button onClick={handleVerify} className="btn btn-primary btn-lg w-100 py-3 mb-4">
+                            ЗЧИТАТИ КАРТКУ
+                        </button>
+                        {verificationResult && (
+                            <div className={`alert ${verificationResult.status === 'Valid' ? 'alert-success' : 'alert-danger'}`}>
+                                <h2 className="fw-bold">{verificationResult.status === 'Valid' ? "✅ ОПЛАЧЕНО" : "❌ НЕОПЛАЧЕНО"}</h2>
+                                <p className="mb-0">{verificationResult.message}</p>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            ) : (
+                /* ПАНЕЛЬ ПАСАЖИРА */
+                <div className="row">
+                    <div className="col-md-4">
+                        <div className="card shadow border-0 bg-gradient bg-primary text-white mb-4">
+                            <div className="card-body">
+                                <h6 className="opacity-75">Мій баланс</h6>
+                                <h1 className="display-5 fw-bold">{passenger.wallet?.balance.toFixed(2)} ₴</h1>
+                                <hr />
+                                <div className="small">
+                                    <div>👤 {passenger.fullName}</div>
+                                    <div>🏷️ Пільга: {passenger.category?.name} ({passenger.category?.discountPercent}%)</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="card shadow-sm p-3 border-0">
+                            <h6>Поповнення</h6>
+                            <div className="btn-group btn-group-sm mb-3">
+                                {[50, 100, 200].map(m => (
+                                    <button key={m} onClick={() => handleTopUp(m)} className="btn btn-outline-primary">+{m}</button>
+                                ))}
+                            </div>
+                            <div className="input-group">
+                                <input type="number" className="form-control" placeholder="Сума"
+                                    onChange={(e) => setTopUpAmount(e.target.value)} />
+                                <button className="btn btn-primary" onClick={() => handleTopUp()}>OK</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="col-md-4">
+                        <div className="card shadow-sm border-0 h-100 text-center p-4">
+                            <h5 className="mb-4">🚍 Валідатор</h5>
+                            <select className="form-select mb-3 form-select-lg" value={transportId}
+                                onChange={(e) => setTransportId(e.target.value)}>
+                                <option value="1">Автобус №24</option>
+                                <option value="2">Трамвай №3</option>
+                                <option value="3">Тролейбус №10</option>
+                            </select>
+                            <div className="form-check form-switch mb-4 text-start">
+                                <input className="form-check-input" type="checkbox" checked={isAnonymous}
+                                    onChange={() => setIsAnonymous(!isAnonymous)} />
+                                <label className="form-check-label">Анонімно (без пільг)</label>
+                            </div>
+                            <button onClick={handleTap} className="btn btn-danger btn-lg w-100 py-4 fw-bold shadow">
+                                ПРИКЛАСТИ КАРТКУ
                             </button>
                         </div>
                     </div>
-                </div>
 
-                {/* ЦЕНТР Валідатор */}
-                <div className="col-md-4">
-                    <div className="card shadow mb-4 border-warning">
-                        <div className="card-header bg-warning text-dark text-center fw-bold">ВАЛІДАТОР</div>
-                        <div className="card-body text-center">
-                            <label className="form-label small">Оберіть Транспорт</label>
-                            <select className="form-select mb-3" value={transportId} onChange={(e) => setTransportId(e.target.value)}>
-                                <option value="1">Автобус AA 1234</option>
-                                <option value="2">Трамвай TT 5555</option>
-                            </select>
-
-                            <div className="form-check form-switch mb-3 text-start">
-                                <input className="form-check-input" type="checkbox" checked={isAnonymous} onChange={() => setIsAnonymous(!isAnonymous)} />
-                                <label className="form-check-label small">Анонімна поїздка (без пільг)</label>
+                    <div className="col-md-4">
+                        <div className="card shadow-sm border-0 h-100">
+                            <div className="card-header bg-white fw-bold">Останні транзакції</div>
+                            <div className="list-group list-group-flush overflow-auto" style={{ maxHeight: '400px' }}>
+                                {history.map(t => (
+                                    <div key={t.tripId} className="list-group-item d-flex justify-content-between align-items-start">
+                                        <div>
+                                            <div className="fw-bold">{t.routeNumber}</div>
+                                            <div className="text-muted extra-small">{new Date(t.tripDateTime).toLocaleString()}</div>
+                                        </div>
+                                        <span className="badge bg-light text-danger">-{t.finalPrice} ₴</span>
+                                    </div>
+                                ))}
                             </div>
-
-                            <button onClick={handleTap} className="btn btn-danger btn-lg w-100 py-3 shadow-sm">ПРИКЛАСТИ КАРТКУ</button>
                         </div>
                     </div>
                 </div>
-
-                {/* ПРАВА ПАНЕЛЬ Історія */}
-                <div className="col-md-4">
-                    <div className="card shadow shadow-sm overflow-auto" style={{ maxHeight: '400px' }}>
-                        <div className="card-header bg-dark text-white">Останні поїздки</div>
-                        <ul className="list-group list-group-flush">
-                            {history.length > 0 ? (
-                                history.map(trip => (
-                                    <li key={trip.tripId} className="list-group-item d-flex justify-content-between align-items-center">
-                                        <div>
-                                            <small className="d-block text-muted">{new Date(trip.tripDateTime).toLocaleTimeString()}</small>
-                                            <span>{trip.routeNumber || "Маршрут"}</span>
-                                        </div>
-                                        <span className="badge bg-secondary">-{trip.finalPrice} ₴</span>
-                                    </li>
-                                ))
-                            ) : (
-                                <li className="list-group-item text-center text-muted">Поїздок ще не було</li>
-                            )}
-                        </ul>
-                    </div>
-                </div>
-            </div>
+            )}
         </div>
     );
 }

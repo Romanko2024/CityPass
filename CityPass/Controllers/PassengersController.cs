@@ -32,7 +32,10 @@ namespace CityPass.Controllers
         [HttpGet("{id}")]
         public async Task<ActionResult<Passenger>> GetPassenger(int id)
         {
-            var passenger = await _context.Passengers.FindAsync(id);
+            var passenger = await _context.Passengers
+                .Include(p => p.Category)
+                .Include(p => p.Wallet)
+                .FirstOrDefaultAsync(p => p.PassengerId == id);
 
             if (passenger == null)
             {
