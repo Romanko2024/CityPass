@@ -2,5 +2,9 @@
   <Folder Name="/Solution Items/">
     <File Path=".gitignore" />
   </Folder>
+  <Project Path="CityPass.Frontend/citypass.frontend.esproj">
+    <Build />
+    <Deploy />
+  </Project>
   <Project Path="CityPass/CityPass.csproj" />
 </Solution>

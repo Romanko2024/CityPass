@@ -77,11 +77,9 @@ namespace CityPass.Controllers
         [HttpPost]
         public async Task<ActionResult<Trip>> PostTrip(Trip trip)
         {
-            // 1. Шукаємо налаштування системи
             var settings = await _context.SystemSettings.FirstOrDefaultAsync();
-            if (settings == null) return BadRequest("Налаштування цін не знайдено");
+            if (settings == null) return BadRequest("Налаштування системи не знайдено");
 
-            // 2. Шукаємо пасажира та його гаманець разом із категорією
             var passenger = await _context.Passengers
                 .Include(p => p.Category)
                 .Include(p => p.Wallet)
@@ -90,25 +88,89 @@ namespace CityPass.Controllers
             if (passenger == null || passenger.Wallet == null)
                 return NotFound("Пасажир або гаманець не знайдений");
 
-            // 3. РОЗРАХУНОК ЦІНИ
-            decimal discount = passenger.Category?.DiscountPercent ?? 0;
-            decimal finalPrice = settings.BasePrice * (1 - (discount / 100));
+            decimal priceToPay = settings.BasePrice;
+            var appliedDiscounts = new List<int>();
 
-            // 4. ПЕРЕВІРКА БАЛАНСУ
-            if (passenger.Wallet.Balance < finalPrice)
+            // 1. ПЕРЕВІРКА НА АНОНІМНІСТЬ
+            bool useBenefits = !trip.IsAnonymousTrip;
+
+            // 2. ЛОГІКА ПІЛЬГОВИКА (Monthly Limit)
+            if (useBenefits && passenger.Category != null && passenger.Category.DiscountPercent > 0)
+            {
+                var startOfMonth = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1);
+                var monthlySavings = await _context.Trips
+                    .Where(t => t.PassengerId == passenger.PassengerId && t.TripDateTime >= startOfMonth)
+                    .SumAsync(t => t.StandardPriceAtMoment - t.FinalPrice);
+
+                if (monthlySavings < passenger.Category.MonthlyLimit)
+                {
+                    priceToPay = 0;
+                    appliedDiscounts.Add(4);
+                }
+                else
+                {
+                    priceToPay = settings.BasePrice * (1 - (passenger.Category.DiscountPercent / 100));
+                    appliedDiscounts.Add(5);
+                }
+            }
+            else
+            {
+                var today = DateTime.UtcNow.Date;
+
+                //Daily Cap
+                var spentToday = await _context.Trips
+                    .Where(t => t.PassengerId == passenger.PassengerId && t.TripDateTime >= today)
+                    .SumAsync(t => t.FinalPrice);
+
+                if (spentToday >= settings.DailyCap)
+                {
+                    priceToPay = 0;
+                    appliedDiscounts.Add(2); // ID Daily Cap
+                }
+                else
+                {
+                    //Transfer
+                    var lastTrip = await _context.Trips
+                        .Where(t => t.PassengerId == passenger.PassengerId)
+                        .OrderByDescending(t => t.TripDateTime)
+                        .FirstOrDefaultAsync();
+
+                    if (lastTrip != null && (DateTime.UtcNow - lastTrip.TripDateTime).TotalMinutes <= settings.TransferTimeLimit)
+                    {
+                        priceToPay = settings.TransferPrice;
+                        appliedDiscounts.Add(1); // ID Transfer
+                    }
+
+                    else if (spentToday > 0)
+                    {
+                        priceToPay = settings.SubsequentPrice;
+                        appliedDiscounts.Add(3);
+                    }
+                }
+            }
+
+            // 3. ПЕРЕВІРКА БАЛАНСУ
+            if (passenger.Wallet.Balance < priceToPay)
                 return BadRequest("Недостатньо коштів на балансі");
 
-            // 5. ПРОВЕДЕННЯ ОПЛАТИ
-            passenger.Wallet.Balance -= finalPrice;
+            // 4. ОПЛАТА ТА ЗБЕРЕЖЕННЯ
+            passenger.Wallet.Balance -= priceToPay;
             passenger.Wallet.LastTransactionTime = DateTime.UtcNow;
 
-            // 6. ЗАПИС ПОЇЗДКИ
             trip.StandardPriceAtMoment = settings.BasePrice;
-            trip.FinalPrice = finalPrice;
+            trip.FinalPrice = priceToPay;
             trip.TripDateTime = DateTime.UtcNow;
 
             _context.Trips.Add(trip);
             await _context.SaveChangesAsync();
+
+            //використані знижки в проміжну таблицю
+            foreach (var discountId in appliedDiscounts)
+            {
+                _context.Database.ExecuteSqlRaw(
+                    "INSERT INTO \"TripDiscounts\" (\"TripID\", \"DiscountID\") VALUES ({0}, {1})",
+                    trip.TripId, discountId);
+            }
 
             return CreatedAtAction("GetTrip", new { id = trip.TripId }, trip);
         }
@@ -129,6 +191,25 @@ namespace CityPass.Controllers
             return NoContent();
         }
 
+        [HttpGet("verify/{cardUID}")]
+        public async Task<IActionResult> VerifyTicket(string cardUID, [FromQuery] int transportId)
+        {
+            var passenger = await _context.Passengers.FirstOrDefaultAsync(p => p.CardUID == cardUID);
+            if (passenger == null) return NotFound("Картка не зареєстрована");
+
+            var recentTrip = await _context.Trips
+                .Where(t => t.PassengerId == passenger.PassengerId &&
+                            t.TransportId == transportId &&
+                            t.TripDateTime >= DateTime.UtcNow.AddHours(-2))
+                .FirstOrDefaultAsync();
+
+            if (recentTrip != null)
+            {
+                return Ok(new { Status = "Valid", Message = "Проїзд оплачено", Time = recentTrip.TripDateTime });
+            }
+
+            return Ok(new { Status = "Invalid", Message = "Оплата не знайдена! Штраф!" });
+        }
         private bool TripExists(int id)
         {
             return _context.Trips.Any(e => e.TripId == id);

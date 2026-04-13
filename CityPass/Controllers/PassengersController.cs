@@ -111,6 +111,17 @@ namespace CityPass.Controllers
             return NoContent();
         }
 
+        [HttpGet("{id}/history")]
+        public async Task<ActionResult<IEnumerable<Trip>>> GetPassengerHistory(int id)
+        {
+            var trips = await _context.Trips
+                .Where(t => t.PassengerId == id)
+                .OrderByDescending(t => t.TripDateTime)
+                .ToListAsync();
+
+            return trips;
+        }
+
         private bool PassengerExists(int id)
         {
             return _context.Passengers.Any(e => e.PassengerId == id);
