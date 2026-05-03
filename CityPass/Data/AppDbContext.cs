@@ -17,10 +17,18 @@ namespace CityPass.Data
         public DbSet<TripDiscount> TripDiscounts { get; set; }
         public DbSet<SystemSetting> SystemSettings { get; set; }
 
+        public DbSet<CityPass.Models.Route> Routes { get; set; }
+        public DbSet<PassengerCategory> PassengerCategories { get; set; }
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
+            //складений ключ для знижок у поїздці
             modelBuilder.Entity<TripDiscount>()
                 .HasKey(td => new { td.TripId, td.DiscountId });
+
+            //складений ключ для багатьох пільг у пасажира
+            modelBuilder.Entity<PassengerCategory>()
+                .HasKey(pc => new { pc.PassengerId, pc.CategoryId });
         }
     }
 }

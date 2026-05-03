@@ -1,5 +1,4 @@
 ﻿using System.ComponentModel.DataAnnotations;
-using System.ComponentModel.DataAnnotations.Schema;
 
 namespace CityPass.Models
 {
@@ -7,14 +6,10 @@ namespace CityPass.Models
     {
         [Key]
         public int PassengerId { get; set; }
-
-        public int CategoryId { get; set; }
-        [ForeignKey("CategoryId")]
-        public Category? Category { get; set; }
-        public string? FullName { get; set; } // could be NULL
-
+        public string? FullName { get; set; }
         [Required]
         public string CardUID { get; set; } = string.Empty;
         public Wallet? Wallet { get; set; }
+        public List<PassengerCategory> PassengerCategories { get; set; } = new();
     }
 }

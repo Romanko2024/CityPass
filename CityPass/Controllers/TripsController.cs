@@ -1,11 +1,12 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
+﻿using CityPass.Data;
+using CityPass.Models;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using CityPass.Data;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
 
 namespace CityPass.Controllers
 {
@@ -75,49 +76,52 @@ namespace CityPass.Controllers
         // POST: api/Trips
         // To protect from overposting attacks, see https://go.microsoft.com/fwlink/?linkid=2123754
         [HttpPost]
-        public async Task<ActionResult<Trip>> PostTrip(Trip trip)
+        public async Task<ActionResult<Trip>> PostTrip([FromBody] TripRequest request)
         {
             var settings = await _context.SystemSettings.FirstOrDefaultAsync();
-            if (settings == null) return BadRequest("Налаштування системи не знайдено");
+            if (settings == null) return BadRequest("Налаштування не знайдено");
 
             var passenger = await _context.Passengers
-                .Include(p => p.Category)
+                .Include(p => p.PassengerCategories).ThenInclude(pc => pc.Category)
                 .Include(p => p.Wallet)
-                .FirstOrDefaultAsync(p => p.PassengerId == trip.PassengerId);
+                .FirstOrDefaultAsync(p => p.PassengerId == request.PassengerId);
 
-            if (passenger == null || passenger.Wallet == null)
-                return NotFound("Пасажир або гаманець не знайдений");
+            if (passenger == null || passenger.Wallet == null) return NotFound("Пасажир не знайдений");
 
             decimal priceToPay = settings.BasePrice;
             var appliedDiscounts = new List<int>();
 
-            // 1. ПЕРЕВІРКА НА АНОНІМНІСТЬ
-            bool useBenefits = !trip.IsAnonymousTrip;
+            Category? selectedCategory = null;
+            if (!request.IsAnonymousTrip && request.SelectedCategoryId != null)
+            {
+                selectedCategory = passenger.PassengerCategories
+                    .Where(pc => pc.CategoryId == request.SelectedCategoryId)
+                    .Select(pc => pc.Category)
+                    .FirstOrDefault();
+            }
 
-            // 2. ЛОГІКА ПІЛЬГОВИКА (Monthly Limit)
-            if (useBenefits && passenger.Category != null && passenger.Category.DiscountPercent > 0)
+            if (selectedCategory != null)
             {
                 var startOfMonth = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc);
                 var monthlySavings = await _context.Trips
                     .Where(t => t.PassengerId == passenger.PassengerId && t.TripDateTime >= startOfMonth)
                     .SumAsync(t => t.StandardPriceAtMoment - t.FinalPrice);
 
-                if (monthlySavings < passenger.Category.MonthlyLimit)
+                if (monthlySavings < selectedCategory.MonthlyLimit)
                 {
                     priceToPay = 0;
                     appliedDiscounts.Add(4);
                 }
                 else
                 {
-                    priceToPay = settings.BasePrice * (1 - (passenger.Category.DiscountPercent / 100));
+                    priceToPay = settings.BasePrice * (1 - (selectedCategory.DiscountPercent / 100));
                     appliedDiscounts.Add(5);
                 }
             }
             else
             {
+                // СТАНДАРТНА ЛОГІКА (Daily Cap / Transfer)
                 var today = DateTime.SpecifyKind(DateTime.UtcNow.Date, DateTimeKind.Utc);
-
-                //Daily Cap
                 var spentToday = await _context.Trips
                     .Where(t => t.PassengerId == passenger.PassengerId && t.TripDateTime >= today)
                     .SumAsync(t => t.FinalPrice);
@@ -125,11 +129,10 @@ namespace CityPass.Controllers
                 if (spentToday >= settings.DailyCap)
                 {
                     priceToPay = 0;
-                    appliedDiscounts.Add(2); // ID Daily Cap
+                    appliedDiscounts.Add(2);
                 }
                 else
                 {
-                    //Transfer
                     var lastTrip = await _context.Trips
                         .Where(t => t.PassengerId == passenger.PassengerId)
                         .OrderByDescending(t => t.TripDateTime)
@@ -138,9 +141,8 @@ namespace CityPass.Controllers
                     if (lastTrip != null && (DateTime.UtcNow - lastTrip.TripDateTime).TotalMinutes <= settings.TransferTimeLimit)
                     {
                         priceToPay = settings.TransferPrice;
-                        appliedDiscounts.Add(1); // ID Transfer
+                        appliedDiscounts.Add(1);
                     }
-
                     else if (spentToday > 0)
                     {
                         priceToPay = settings.SubsequentPrice;
@@ -149,30 +151,41 @@ namespace CityPass.Controllers
                 }
             }
 
-            // 3. ПЕРЕВІРКА БАЛАНСУ
-            if (passenger.Wallet.Balance < priceToPay)
-                return BadRequest("Недостатньо коштів на балансі");
+            if (passenger.Wallet.Balance < priceToPay) return BadRequest("Недостатньо коштів");
 
-            // 4. ОПЛАТА ТА ЗБЕРЕЖЕННЯ
             passenger.Wallet.Balance -= priceToPay;
-            passenger.Wallet.LastTransactionTime = DateTime.UtcNow;
 
-            trip.StandardPriceAtMoment = settings.BasePrice;
-            trip.FinalPrice = priceToPay;
-            trip.TripDateTime = DateTime.UtcNow;
+            var trip = new Trip
+            {
+                PassengerId = request.PassengerId,
+                TransportId = request.TransportId,
+                RouteNumber = request.RouteNumber ?? "Невідомий",
+                TripDateTime = DateTime.UtcNow,
+                StandardPriceAtMoment = settings.BasePrice,
+                FinalPrice = priceToPay,
+                IsAnonymousTrip = request.IsAnonymousTrip
+            };
 
             _context.Trips.Add(trip);
             await _context.SaveChangesAsync();
 
-            //використані знижки в проміжну таблицю
-            foreach (var discountId in appliedDiscounts)
+            foreach (var dId in appliedDiscounts)
             {
                 _context.Database.ExecuteSqlRaw(
                     "INSERT INTO \"TripDiscounts\" (\"TripId\", \"DiscountId\") VALUES ({0}, {1})",
-                    trip.TripId, discountId);
+                    trip.TripId, dId);
             }
 
             return CreatedAtAction("GetTrip", new { id = trip.TripId }, trip);
+        }
+
+        public class TripRequest
+        {
+            public int PassengerId { get; set; }
+            public int TransportId { get; set; }
+            public string RouteNumber { get; set; } = "";
+            public bool IsAnonymousTrip { get; set; }
+            public int? SelectedCategoryId { get; set; }
         }
 
         // DELETE: api/Trips/5
@@ -191,24 +204,44 @@ namespace CityPass.Controllers
             return NoContent();
         }
 
-        [HttpGet("verify/{cardUID}")]
-        public async Task<IActionResult> VerifyTicket(string cardUID, [FromQuery] int transportId)
+        [HttpGet("verify/{uid}")]
+        public async Task<ActionResult> Verify(string uid, [FromQuery] int transportId)
         {
-            var passenger = await _context.Passengers.FirstOrDefaultAsync(p => p.CardUID == cardUID);
-            if (passenger == null) return NotFound("Картка не зареєстрована");
+            //пошук пасажира за UID
+            var passenger = await _context.Passengers
+                .Include(p => p.Wallet)
+                .FirstOrDefaultAsync(p => p.CardUID == uid);
 
-            var recentTrip = await _context.Trips
-                .Where(t => t.PassengerId == passenger.PassengerId &&
-                            t.TransportId == transportId &&
-                            t.TripDateTime >= DateTime.UtcNow.AddHours(-2))
+            if (passenger == null)
+                return NotFound(new { status = "Invalid", message = "Картку не знайдено в системі" });
+
+            //чи була оплата в цьому транспорті за останні 60 хвилин
+            var lastTrip = await _context.Trips
+                .Where(t => t.PassengerId == passenger.PassengerId && t.TransportId == transportId)
+                .OrderByDescending(t => t.TripDateTime)
                 .FirstOrDefaultAsync();
 
-            if (recentTrip != null)
-            {
-                return Ok(new { Status = "Valid", Message = "Проїзд оплачено", Time = recentTrip.TripDateTime });
-            }
+            bool isValid = lastTrip != null && (DateTime.UtcNow - lastTrip.TripDateTime).TotalMinutes <= 60;
 
-            return Ok(new { Status = "Invalid", Message = "Оплата не знайдена! Штраф!" });
+            //10 останніх поїздок для історії
+            var recentTrips = await _context.Trips
+                .Where(t => t.PassengerId == passenger.PassengerId)
+                .OrderByDescending(t => t.TripDateTime)
+                .Take(10)
+                .Select(t => new {
+                    t.RouteNumber,
+                    t.TripDateTime,
+                    t.FinalPrice
+                })
+                .ToListAsync();
+
+            return Ok(new
+            {
+                status = isValid ? "Valid" : "Invalid",
+                message = isValid ? $"Оплата підтверджена: {lastTrip.TripDateTime.ToLocalTime():HH:mm}" : "Оплата не знайдена",
+                passengerName = passenger.FullName,
+                recentTrips = recentTrips
+            });
         }
         private bool TripExists(int id)
         {

@@ -32,9 +32,12 @@ namespace CityPass.Controllers
         [HttpGet("{id}")]
         public async Task<ActionResult<Passenger>> GetPassenger(int id)
         {
+            //було .Include(p => p.Category)
+            // Тепер через проміжну таблицю PassengerCategories
             var passenger = await _context.Passengers
-                .Include(p => p.Category)
                 .Include(p => p.Wallet)
+                .Include(p => p.PassengerCategories)
+                    .ThenInclude(pc => pc.Category)
                 .FirstOrDefaultAsync(p => p.PassengerId == id);
 
             if (passenger == null)
