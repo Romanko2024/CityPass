@@ -101,6 +101,24 @@ function App() {
 
     if (loading) return <div className="p-5 text-center">Завантаження...</div>;
 
+    const handleExecuteQuery = async (queryId, param) => {
+        let url = `${API_URL}/Admin/Queries/${queryId}`;
+        if (param) url += `?param=${param}`;
+
+        try {
+            const res = await fetch(url);
+            const result = await res.json();
+
+            console.table(result);
+            alert(`Запит виконано! Знайдено записів: ${result.length || 0}. Результати в консолі.`);
+
+            setAdminData(result);
+            setCurrentTable(`Результат: ${queryId}`);
+        } catch {
+            alert("Помилка виконання запиту.");
+        }
+    };
+
     return (
         <div className="container mt-4">
             <header className="d-flex justify-content-between align-items-center mb-4 p-3 bg-light rounded shadow-sm">
@@ -130,6 +148,7 @@ function App() {
                     currentTable={currentTable}
                     onTableChange={fetchAdminData}
                     onDelete={handleAdminDelete}
+                    onExecuteQuery={handleExecuteQuery}
                 />
             )}
         </div>

@@ -28,7 +28,7 @@ const Validator = ({ routes, allVehicles, passenger, onTap }) => {
         setRoute("");
         setVehicleId("");
     };
-    console.log("DEBUG:", { routes, allVehicles });
+
     return (
         <div className="card shadow-sm border-0 p-4">
             <h5 className="text-center mb-3">🚍 Валідатор</h5>
