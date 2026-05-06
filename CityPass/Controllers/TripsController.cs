@@ -205,9 +205,8 @@ namespace CityPass.Controllers
         }
 
         [HttpGet("verify/{uid}")]
-        public async Task<ActionResult> Verify(string uid, [FromQuery] int transportId)
+        public async Task<ActionResult> Verify(string uid, [FromQuery] int transportId) // transportId тепер — це конкретний ID з таблиці Transports
         {
-            //пошук пасажира за UID
             var passenger = await _context.Passengers
                 .Include(p => p.Wallet)
                 .FirstOrDefaultAsync(p => p.CardUID == uid);
@@ -215,30 +214,36 @@ namespace CityPass.Controllers
             if (passenger == null)
                 return NotFound(new { status = "Invalid", message = "Картку не знайдено в системі" });
 
-            //чи була оплата в цьому транспорті за останні 60 хвилин
+            var currentTransport = await _context.Transports.FindAsync(transportId);
+            string boardInfo = currentTransport?.BoardNumber ?? "невідомо";
+
             var lastTrip = await _context.Trips
                 .Where(t => t.PassengerId == passenger.PassengerId && t.TransportId == transportId)
                 .OrderByDescending(t => t.TripDateTime)
                 .FirstOrDefaultAsync();
 
+            //якщо оплата була здійснена в цьому ТЗ за останні 60 хв
             bool isValid = lastTrip != null && (DateTime.UtcNow - lastTrip.TripDateTime).TotalMinutes <= 60;
 
-            //10 останніх поїздок для історії
             var recentTrips = await _context.Trips
                 .Where(t => t.PassengerId == passenger.PassengerId)
                 .OrderByDescending(t => t.TripDateTime)
                 .Take(10)
                 .Select(t => new {
-                    t.RouteNumber,
+                    //трім маршрута
+                    RouteNumber = t.RouteNumber.Replace("Маршрут №", "").Replace("Маршрут #", "").Trim(),
                     t.TripDateTime,
-                    t.FinalPrice
+                    t.FinalPrice,
+                    BoardNumber = _context.Transports.Where(tr => tr.TransportID == t.TransportId).Select(tr => tr.BoardNumber).FirstOrDefault()
                 })
                 .ToListAsync();
 
             return Ok(new
             {
                 status = isValid ? "Valid" : "Invalid",
-                message = isValid ? $"Оплата підтверджена: {lastTrip.TripDateTime.ToLocalTime():HH:mm}" : "Оплата не знайдена",
+                message = isValid
+                    ? $"✅ Оплата підтверджена для ТЗ {boardInfo} о {lastTrip.TripDateTime.ToLocalTime():HH:mm}"
+                    : $"❌ Оплата для ТЗ {boardInfo} не знайдена",
                 passengerName = passenger.FullName,
                 recentTrips = recentTrips
             });
