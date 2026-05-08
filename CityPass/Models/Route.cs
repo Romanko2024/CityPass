@@ -9,5 +9,6 @@ namespace CityPass.Models
         public string RouteNumber { get; set; } = string.Empty;
         public string Description { get; set; } = string.Empty;
         public int TransportId { get; set; }
+        public List<Trip> Trips { get; set; } = new();
     }
 }

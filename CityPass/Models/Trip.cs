@@ -1,4 +1,6 @@
 ﻿using System.ComponentModel.DataAnnotations;
+using CityPass.Models;
+
 
 public class Trip
 {
@@ -7,8 +9,9 @@ public class Trip
 
     public int PassengerId { get; set; }
     public int TransportId { get; set; }
+    public int RouteId { get; set; }
+    public CityPass.Models.Route? Route { get; set; }
 
-    public string RouteNumber { get; set; } = string.Empty;
     public DateTime TripDateTime { get; set; } = DateTime.UtcNow;
 
     public decimal StandardPriceAtMoment { get; set; }

@@ -41,10 +41,11 @@ namespace CityPass.Controllers
             decimal maxVal = decimal.TryParse(max, out var resMax) ? resMax : 20;
 
             var result = await _context.Trips
+                .Include(t => t.Route) // Підтягуємо об'єкт маршруту
                 .Where(t => t.FinalPrice >= minVal && t.FinalPrice <= maxVal)
                 .Select(t => new {
                     Id = t.TripId,
-                    Label = $"Поїздка на маршруті {t.RouteNumber}",
+                    Label = $"Поїздка на маршруті {t.Route.RouteNumber}", // Змінено на t.Route.RouteNumber
                     SubLabel = $"Ціна: {t.FinalPrice} ₴"
                 })
                 .ToListAsync();
@@ -55,7 +56,7 @@ namespace CityPass.Controllers
         [HttpGet("Queries/q3")]
         public async Task<IActionResult> GetQ3()
         {
-            var targetIds = new List<int> { 1, 3 }; // Наприклад, ID типів транспорту
+            var targetIds = new List<int> { 1, 3 };
             var result = await _context.Routes
                 .Where(r => targetIds.Contains(r.TransportId))
                 .Select(r => new {
@@ -189,7 +190,8 @@ namespace CityPass.Controllers
         public async Task<IActionResult> GetQ11()
         {
             var result = await _context.Trips
-                .GroupBy(t => t.RouteNumber)
+                .Include(t => t.Route)
+                .GroupBy(t => t.Route.RouteNumber) // Групуємо по номеру з таблиці Routes
                 .Select(g => new {
                     Id = 0,
                     Label = $"Маршрут №{g.Key}",
@@ -205,8 +207,9 @@ namespace CityPass.Controllers
         public async Task<IActionResult> GetQ12()
         {
             var result = await _context.Trips
-                .Where(t => t.FinalPrice > 10) // Умова на вибірку поля
-                .GroupBy(t => t.RouteNumber)
+                .Include(t => t.Route)
+                .Where(t => t.FinalPrice > 10)
+                .GroupBy(t => t.Route.RouteNumber)
                 .Select(g => new {
                     Id = 0,
                     Label = $"Маршрут №{g.Key} (Дорогі поїздки)",
@@ -218,13 +221,13 @@ namespace CityPass.Controllers
 
         // 13. Запит на вибірку з використанням агрегатної функції і умовою на агрегатну функцію (HAVING).
         [HttpGet("Queries/q13")]
-        [HttpGet("Queries/high-traffic-routes")]
         public async Task<IActionResult> GetQ13([FromQuery] string param)
         {
             int minTrips = int.TryParse(param, out var p) ? p : 5;
             var result = await _context.Trips
-                .GroupBy(t => t.RouteNumber)
-                .Where(g => g.Count() >= minTrips) // HAVING
+                .Include(t => t.Route)
+                .GroupBy(t => t.Route.RouteNumber)
+                .Where(g => g.Count() >= minTrips)
                 .Select(g => new {
                     Id = 0,
                     Label = $"Маршрут №{g.Key}",
@@ -241,10 +244,11 @@ namespace CityPass.Controllers
         public async Task<IActionResult> GetQ14()
         {
             var result = await _context.Trips
-                .Where(t => t.RouteNumber.StartsWith("1")) // вибірка
-                .GroupBy(t => t.RouteNumber)
-                .Where(g => g.Count() > 1) //агрегатна ф
-                .OrderByDescending(g => g.Sum(x => x.FinalPrice)) //сорт
+                .Include(t => t.Route)
+                .Where(t => t.Route.RouteNumber.StartsWith("1"))
+                .GroupBy(t => t.Route.RouteNumber)
+                .Where(g => g.Count() > 1)
+                .OrderByDescending(g => g.Sum(x => x.FinalPrice))
                 .Select(g => new {
                     Id = 0,
                     Label = $"Топ-маршрут №{g.Key}",
@@ -262,13 +266,14 @@ namespace CityPass.Controllers
         public async Task<IActionResult> GetQ15()
         {
             var result = await _context.Trips
+                .Include(t => t.Route)
                 .Join(_context.Passengers,
                     t => t.PassengerId,
                     p => p.PassengerId,
                     (t, p) => new {
                         Id = t.TripId,
                         Label = p.FullName,
-                        SubLabel = $"Маршрут {t.RouteNumber} | Картка: {p.CardUID}"
+                        SubLabel = $"Маршрут {t.Route.RouteNumber} | Картка: {p.CardUID}"
                     })
                 .ToListAsync();
             return Ok(result);
@@ -304,14 +309,14 @@ namespace CityPass.Controllers
         public async Task<IActionResult> GetQ17()
         {
             var result = await _context.Transports
-                .GroupJoin(_context.Trips,
+                .GroupJoin(_context.Trips.Include(t => t.Route),
                     tr => tr.TransportID,
                     t => t.TransportId,
                     (tr, trips) => new { tr, trips })
                 .SelectMany(x => x.trips.DefaultIfEmpty(), (x, t) => new {
                     Id = x.tr.TransportID,
                     Label = $"{x.tr.Type} (№{x.tr.BoardNumber})",
-                    SubLabel = t == null ? "🛑 Немає записів про поїздки" : $"✅ Остання поїздка на маршруті {t.RouteNumber}"
+                    SubLabel = t == null ? "🛑 Немає записів про поїздки" : $"✅ Остання поїздка на маршруті {t.Route.RouteNumber}"
                 })
                 .ToListAsync();
             return Ok(result);
@@ -345,6 +350,7 @@ namespace CityPass.Controllers
             string search = string.IsNullOrEmpty(param) ? "Олександр" : param;
 
             var result = await _context.Trips
+                .Include(t => t.Route)
                 .Join(_context.Passengers,
                     t => t.PassengerId,
                     p => p.PassengerId,
@@ -353,7 +359,7 @@ namespace CityPass.Controllers
                 .Select(x => new {
                     Id = x.t.TripId,
                     Label = x.p.FullName,
-                    SubLabel = $"Поїздка на маршруті: {x.t.RouteNumber}"
+                    SubLabel = $"Поїздка на маршруті: {x.t.Route.RouteNumber}"
                 })
                 .ToListAsync();
             return Ok(result);
@@ -369,10 +375,11 @@ namespace CityPass.Controllers
             var averagePrice = await _context.Trips.AverageAsync(t => t.FinalPrice);
 
             var result = await _context.Trips
+                .Include(t => t.Route)
                 .Where(t => t.FinalPrice > averagePrice)
                 .Select(t => new {
                     Id = t.TripId,
-                    Label = $"Маршрут {t.RouteNumber}",
+                    Label = $"Маршрут {t.Route.RouteNumber}",
                     SubLabel = $"Ціна {t.FinalPrice} ₴ (Вище середньої: {Math.Round(averagePrice, 2)} ₴)"
                 })
                 .ToListAsync();
@@ -441,13 +448,13 @@ namespace CityPass.Controllers
         [HttpGet("Queries/q26")]
         public async Task<IActionResult> GetQ26()
         {
-            // підзапит отримання списку ID пасажирів
             var passengerIdsOnRoute1 = _context.Trips
-                .Where(t => t.RouteNumber == "1")
+                .Include(t => t.Route)
+                .Where(t => t.Route.RouteNumber == "1")
                 .Select(t => t.PassengerId);
 
             var result = await _context.Passengers
-                .Where(p => passengerIdsOnRoute1.Contains(p.PassengerId)) //логіка IN
+                .Where(p => passengerIdsOnRoute1.Contains(p.PassengerId))
                 .Select(p => new {
                     Id = p.PassengerId,
                     Label = p.FullName,
@@ -465,9 +472,9 @@ namespace CityPass.Controllers
             var result = await (from r in _context.Routes
                                 join stats in (
                                     _context.Trips
-                                    .GroupBy(t => t.RouteNumber)
-                                    .Select(g => new { RouteNum = g.Key, AvgPrice = g.Average(x => x.FinalPrice) })
-                                ) on r.RouteNumber equals stats.RouteNum
+                                    .GroupBy(t => t.RouteId)
+                                    .Select(g => new { RId = g.Key, AvgPrice = g.Average(x => x.FinalPrice) })
+                                ) on r.RouteId equals stats.RId
                                 select new
                                 {
                                     Id = r.RouteId,

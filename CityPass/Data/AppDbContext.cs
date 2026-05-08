@@ -1,6 +1,5 @@
 ﻿using CityPass.Models;
 using Microsoft.EntityFrameworkCore;
-using System.Security.Cryptography.Xml;
 
 namespace CityPass.Data
 {
@@ -16,7 +15,6 @@ namespace CityPass.Data
         public DbSet<Discount> Discounts { get; set; }
         public DbSet<TripDiscount> TripDiscounts { get; set; }
         public DbSet<SystemSetting> SystemSettings { get; set; }
-
         public DbSet<CityPass.Models.Route> Routes { get; set; }
         public DbSet<PassengerCategory> PassengerCategories { get; set; }
 
@@ -29,6 +27,12 @@ namespace CityPass.Data
             //складений ключ для багатьох пільг у пасажира
             modelBuilder.Entity<PassengerCategory>()
                 .HasKey(pc => new { pc.PassengerId, pc.CategoryId });
+
+            // для зв'язку Trip -> Route (3NF)
+            modelBuilder.Entity<Trip>()
+                .HasOne(t => t.Route)
+                .WithMany(r => r.Trips)
+                .HasForeignKey(t => t.RouteId);
         }
     }
 }

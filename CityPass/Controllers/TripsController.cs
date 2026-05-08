@@ -75,6 +75,7 @@ namespace CityPass.Controllers
 
         // POST: api/Trips
         // To protect from overposting attacks, see https://go.microsoft.com/fwlink/?linkid=2123754
+        // POST: api/Trips
         [HttpPost]
         public async Task<ActionResult<Trip>> PostTrip([FromBody] TripRequest request)
         {
@@ -120,7 +121,6 @@ namespace CityPass.Controllers
             }
             else
             {
-                // СТАНДАРТНА ЛОГІКА (Daily Cap / Transfer)
                 var today = DateTime.SpecifyKind(DateTime.UtcNow.Date, DateTimeKind.Utc);
                 var spentToday = await _context.Trips
                     .Where(t => t.PassengerId == passenger.PassengerId && t.TripDateTime >= today)
@@ -155,11 +155,12 @@ namespace CityPass.Controllers
 
             passenger.Wallet.Balance -= priceToPay;
 
+            // ВИПРАВЛЕНО: Використовуємо RouteId замість RouteNumber
             var trip = new Trip
             {
                 PassengerId = request.PassengerId,
                 TransportId = request.TransportId,
-                RouteNumber = request.RouteNumber ?? "Невідомий",
+                RouteId = request.RouteId, // Тепер записуємо ID зв'язку
                 TripDateTime = DateTime.UtcNow,
                 StandardPriceAtMoment = settings.BasePrice,
                 FinalPrice = priceToPay,
@@ -179,33 +180,18 @@ namespace CityPass.Controllers
             return CreatedAtAction("GetTrip", new { id = trip.TripId }, trip);
         }
 
+        // ВИПРАВЛЕНО: TripRequest тепер очікує RouteId
         public class TripRequest
         {
             public int PassengerId { get; set; }
             public int TransportId { get; set; }
-            public string RouteNumber { get; set; } = "";
+            public int RouteId { get; set; } // Змінено з string на int
             public bool IsAnonymousTrip { get; set; }
             public int? SelectedCategoryId { get; set; }
         }
 
-        // DELETE: api/Trips/5
-        [HttpDelete("{id}")]
-        public async Task<IActionResult> DeleteTrip(int id)
-        {
-            var trip = await _context.Trips.FindAsync(id);
-            if (trip == null)
-            {
-                return NotFound();
-            }
-
-            _context.Trips.Remove(trip);
-            await _context.SaveChangesAsync();
-
-            return NoContent();
-        }
-
         [HttpGet("verify/{uid}")]
-        public async Task<ActionResult> Verify(string uid, [FromQuery] int transportId) // transportId тепер — це конкретний ID з таблиці Transports
+        public async Task<ActionResult> Verify(string uid, [FromQuery] int transportId)
         {
             var passenger = await _context.Passengers
                 .Include(p => p.Wallet)
@@ -222,19 +208,24 @@ namespace CityPass.Controllers
                 .OrderByDescending(t => t.TripDateTime)
                 .FirstOrDefaultAsync();
 
-            //якщо оплата була здійснена в цьому ТЗ за останні 60 хв
             bool isValid = lastTrip != null && (DateTime.UtcNow - lastTrip.TripDateTime).TotalMinutes <= 60;
 
+            // ВИПРАВЛЕНО: Отримуємо номер через навігаційну властивість Route
             var recentTrips = await _context.Trips
+                .Include(t => t.Route) // Обов'язково підвантажуємо Route
                 .Where(t => t.PassengerId == passenger.PassengerId)
                 .OrderByDescending(t => t.TripDateTime)
                 .Take(10)
                 .Select(t => new {
-                    //трім маршрута
-                    RouteNumber = t.RouteNumber.Replace("Маршрут №", "").Replace("Маршрут #", "").Trim(),
+                    RouteNumber = t.Route != null
+                        ? t.Route.RouteNumber.Replace("Маршрут №", "").Replace("Маршрут #", "").Trim()
+                        : "??",
                     t.TripDateTime,
                     t.FinalPrice,
-                    BoardNumber = _context.Transports.Where(tr => tr.TransportID == t.TransportId).Select(tr => tr.BoardNumber).FirstOrDefault()
+                    BoardNumber = _context.Transports
+                        .Where(tr => tr.TransportID == t.TransportId)
+                        .Select(tr => tr.BoardNumber)
+                        .FirstOrDefault()
                 })
                 .ToListAsync();
 
@@ -247,6 +238,22 @@ namespace CityPass.Controllers
                 passengerName = passenger.FullName,
                 recentTrips = recentTrips
             });
+        }
+
+        // DELETE: api/Trips/5
+        [HttpDelete("{id}")]
+        public async Task<IActionResult> DeleteTrip(int id)
+        {
+            var trip = await _context.Trips.FindAsync(id);
+            if (trip == null)
+            {
+                return NotFound();
+            }
+
+            _context.Trips.Remove(trip);
+            await _context.SaveChangesAsync();
+
+            return NoContent();
         }
         private bool TripExists(int id)
         {
