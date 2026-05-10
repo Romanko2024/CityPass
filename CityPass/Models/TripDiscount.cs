@@ -1,4 +1,6 @@
-﻿public class TripDiscount
+﻿namespace CityPass.Models;
+
+public class TripDiscount
 {
     public int TripId { get; set; }
     public Trip? Trip { get; set; }

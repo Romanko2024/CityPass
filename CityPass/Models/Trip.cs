@@ -1,5 +1,6 @@
 ﻿using System.ComponentModel.DataAnnotations;
 using CityPass.Models;
+namespace CityPass.Models;
 
 
 public class Trip
@@ -8,7 +9,9 @@ public class Trip
     public int TripId { get; set; }
 
     public int PassengerId { get; set; }
+    public Passenger? Passenger { get; set; }
     public int TransportId { get; set; }
+    public Transport? Transport { get; set; }
     public int RouteId { get; set; }
     public CityPass.Models.Route? Route { get; set; }
 

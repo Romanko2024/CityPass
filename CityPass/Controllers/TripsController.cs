@@ -155,12 +155,11 @@ namespace CityPass.Controllers
 
             passenger.Wallet.Balance -= priceToPay;
 
-            // ВИПРАВЛЕНО: Використовуємо RouteId замість RouteNumber
             var trip = new Trip
             {
                 PassengerId = request.PassengerId,
                 TransportId = request.TransportId,
-                RouteId = request.RouteId, // Тепер записуємо ID зв'язку
+                RouteId = request.RouteId,
                 TripDateTime = DateTime.UtcNow,
                 StandardPriceAtMoment = settings.BasePrice,
                 FinalPrice = priceToPay,
@@ -172,20 +171,23 @@ namespace CityPass.Controllers
 
             foreach (var dId in appliedDiscounts)
             {
-                _context.Database.ExecuteSqlRaw(
-                    "INSERT INTO \"TripDiscounts\" (\"TripId\", \"DiscountId\") VALUES ({0}, {1})",
-                    trip.TripId, dId);
+                var tripDiscount = new TripDiscount
+                {
+                    TripId = trip.TripId,
+                    DiscountId = dId
+                };
+                _context.TripDiscounts.Add(tripDiscount);
             }
+            await _context.SaveChangesAsync();
 
             return CreatedAtAction("GetTrip", new { id = trip.TripId }, trip);
         }
 
-        // ВИПРАВЛЕНО: TripRequest тепер очікує RouteId
         public class TripRequest
         {
             public int PassengerId { get; set; }
             public int TransportId { get; set; }
-            public int RouteId { get; set; } // Змінено з string на int
+            public int RouteId { get; set; }
             public bool IsAnonymousTrip { get; set; }
             public int? SelectedCategoryId { get; set; }
         }
@@ -210,9 +212,8 @@ namespace CityPass.Controllers
 
             bool isValid = lastTrip != null && (DateTime.UtcNow - lastTrip.TripDateTime).TotalMinutes <= 60;
 
-            // ВИПРАВЛЕНО: Отримуємо номер через навігаційну властивість Route
             var recentTrips = await _context.Trips
-                .Include(t => t.Route) // Обов'язково підвантажуємо Route
+                .Include(t => t.Route)
                 .Where(t => t.PassengerId == passenger.PassengerId)
                 .OrderByDescending(t => t.TripDateTime)
                 .Take(10)

@@ -12,6 +12,6 @@ namespace CityPass.Models
 
         public decimal DiscountPercent { get; set; }
         public decimal MonthlyLimit { get; set; }
-        public List<Passenger> Passengers { get; set; } = new();
+        public List<PassengerCategory> PassengerCategories { get; set; } = new();
     }
 }

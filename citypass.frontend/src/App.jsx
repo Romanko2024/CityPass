@@ -55,7 +55,7 @@ function App() {
             body: JSON.stringify({
                 passengerId: data.isAnon ? null : 5,
                 transportId: parseInt(data.vehicleId),
-                routeNumber: data.route,
+                routeId: parseInt(data.routeId),
                 isAnonymousTrip: data.isAnon,
                 selectedCategoryId: data.benefit ? parseInt(data.benefit) : null
             })

@@ -1,4 +1,5 @@
 ﻿using System.ComponentModel.DataAnnotations;
+namespace CityPass.Models;
 
 public class Discount
 {

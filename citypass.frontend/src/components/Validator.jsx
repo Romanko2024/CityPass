@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 
 const Validator = ({ routes, allVehicles, passenger, onTap }) => {
     const [type, setType] = useState("1");
-    const [route, setRoute] = useState("");
+    const [routeId, setRouteId] = useState("");
     const [vehicleId, setVehicleId] = useState("");
     const [benefit, setBenefit] = useState("");
     const [isAnon, setIsAnon] = useState(false);
@@ -19,13 +19,12 @@ const Validator = ({ routes, allVehicles, passenger, onTap }) => {
         const vType = v.type || v.Type;
         return vType === mapping[type];
     });
-
-    const activeRoute = route || (filteredRoutes[0]?.routeNumber || "");
+    const activeRouteId = routeId || (filteredRoutes[0]?.routeId || filteredRoutes[0]?.RouteId || "");
     const activeVehicleId = vehicleId || (filteredVehicles[0]?.transportID || filteredVehicles[0]?.transportId || "");
 
     const handleTypeChange = (e) => {
         setType(e.target.value);
-        setRoute("");
+        setRouteId("");
         setVehicleId("");
     };
 
@@ -43,13 +42,13 @@ const Validator = ({ routes, allVehicles, passenger, onTap }) => {
             <label className="small text-muted">Маршрут:</label>
             <select
                 className="form-select mb-2"
-                value={activeRoute}
-                onChange={(e) => setRoute(e.target.value)}
+                value={activeRouteId}
+                onChange={(e) => setRouteId(e.target.value)}
                 disabled={filteredRoutes.length === 0}
             >
                 {filteredRoutes.length > 0 ? (
                     filteredRoutes.map(r => (
-                        <option key={r.routeId || r.RouteId} value={r.routeNumber || r.RouteNumber}>
+                        <option key={r.routeId || r.RouteId} value={r.routeId || r.RouteId}>
                             №{r.routeNumber || r.RouteNumber} — {r.description || r.Description}
                         </option>
                     ))
@@ -99,7 +98,7 @@ const Validator = ({ routes, allVehicles, passenger, onTap }) => {
             <button
                 onClick={() => onTap({
                     vehicleId: activeVehicleId,
-                    route: activeRoute,
+                    routeId: activeRouteId,
                     isAnon,
                     benefit
                 })}

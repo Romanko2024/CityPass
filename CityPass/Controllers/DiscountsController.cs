@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using CityPass.Data;
+using CityPass.Models;
 
 namespace CityPass.Controllers
 {

@@ -9,7 +9,9 @@ const HistoryList = ({ history }) => {
                 {history.map(trip => (
                     <div key={trip.tripId} className="list-group-item d-flex justify-content-between align-items-center">
                         <div>
-                            <div className="fw-bold">{trip.routeNumber}</div>
+                            <div className="fw-bold">
+                                {trip.route ? `Маршрут №${trip.route.routeNumber}` : 'Невідомий маршрут'}
+                            </div>
                             <small className="text-muted">{new Date(trip.tripDateTime).toLocaleString()}</small>
                         </div>
                         <span className="badge bg-light text-dark">{trip.finalPrice.toFixed(2)} ₴</span>

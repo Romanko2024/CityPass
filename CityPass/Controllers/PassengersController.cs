@@ -25,15 +25,17 @@ namespace CityPass.Controllers
         [HttpGet]
         public async Task<ActionResult<IEnumerable<Passenger>>> GetPassengers()
         {
-            return await _context.Passengers.ToListAsync();
+            return await _context.Passengers
+                .Include(p => p.Wallet)
+                .Include(p => p.PassengerCategories)
+                    .ThenInclude(pc => pc.Category)
+                .ToListAsync();
         }
 
         // GET: api/Passengers/5
         [HttpGet("{id}")]
         public async Task<ActionResult<Passenger>> GetPassenger(int id)
         {
-            //було .Include(p => p.Category)
-            // Тепер через проміжну таблицю PassengerCategories
             var passenger = await _context.Passengers
                 .Include(p => p.Wallet)
                 .Include(p => p.PassengerCategories)
