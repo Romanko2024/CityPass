@@ -11,25 +11,44 @@ const AdminTables = ({ data }) => {
         key !== 'passengerId' &&
         key !== 'transportId' &&
         key !== 'routeId' &&
-        key !== 'walletId'
+        key !== 'walletId' &&
+        key !== 'tripDiscounts' &&
+        key !== 'transportID'
     );
+
     const formatCellValue = (value, header) => {
         if (value === null || value === undefined) return '-';
 
-        if (header === 'wallet') {
+        // Форматування для таблиці Маршрутів (Transport об'єкт)
+        if (header === 'transport' && value) {
+            return `${value.type || 'ТЗ'} (${value.boardNumber || 'б/н'})`;
+        }
+
+        // Форматування для таблиці Поїздок (Passenger об'єкт)
+        if (header === 'passenger' && value) {
+            return value.fullName || value.cardUID || 'Анонім';
+        }
+
+        if (header === 'route' && value) {
+            return value.routeNumber || 'Без номера';
+        }
+
+        if (header === 'wallet' && value) {
             return `${value.balance} грн (${value.status})`;
         }
 
-        if (header === 'passengerCategories' && Array.isArray(value)) {
-            if (value.length === 0) return 'Звичайна';
-            return value.map(pc => pc.category?.name).join(', ');
+        // Якщо це масив (Trips у маршрутах, PassengerCategories)
+        if (Array.isArray(value)) {
+            if (header === 'trips') return `Всього: ${value.length}`;
+            if (header === 'passengerCategories') {
+                return value.length === 0 ? 'Звичайна' : value.map(pc => pc.category?.name).join(', ');
+            }
+            return `Кількість: ${value.length}`;
         }
 
-        if (header === 'route' && value.routeNumber) {
-            return value.routeNumber;
+        if (header === 'tripDateTime' || header === 'lastTransactionTime') {
+            return new Date(value).toLocaleString('uk-UA');
         }
-
-        if (Array.isArray(value)) return `Кількість: ${value.length}`;
 
         if (typeof value === 'boolean') return value ? '✅' : '❌';
 
@@ -38,17 +57,22 @@ const AdminTables = ({ data }) => {
 
     const translateHeader = (h) => {
         const dict = {
+            passenger: 'Пасажир',
+            transport: 'Транспорт',
+            route: 'Маршрут',
             fullName: 'ПІБ',
             cardUID: 'UID Картки',
-            wallet: 'Гаманець/Баланс',
+            wallet: 'Гаманець',
             passengerCategories: 'Категорії',
             type: 'Тип',
             boardNumber: 'Бортовий №',
             routeNumber: '№ Маршруту',
             description: 'Опис',
-            tripDateTime: 'Дата/Час',
-            finalPrice: 'Ціна',
-            standardPriceAtMoment: 'Тариф'
+            tripDateTime: 'Час поїздки',
+            finalPrice: 'Сплачено',
+            standardPriceAtMoment: 'Тариф',
+            isAnonymousTrip: 'Анонімно',
+            trips: 'Поїздки'
         };
         return dict[h] || h;
     };
@@ -70,7 +94,7 @@ const AdminTables = ({ data }) => {
                     {data.map((item, idx) => (
                         <tr key={idx}>
                             <td className="text-muted fw-bold">
-                                {item.passengerId || item.tripId || item.routeId || item.transportID || idx + 1}
+                                {item.routeId || item.tripId || item.passengerId || item.transportID || idx + 1}
                             </td>
                             {headers.map(h => (
                                 <td key={h}>

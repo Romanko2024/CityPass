@@ -26,14 +26,20 @@ namespace CityPass.Controllers
         [HttpGet]
         public async Task<ActionResult<IEnumerable<Route>>> GetRoutes()
         {
-            return await _context.Routes.ToListAsync();
+            return await _context.Routes
+                .Include(r => r.Transport)
+                .Include(r => r.Trips)
+                .ToListAsync();
         }
 
         // GET: api/Routes/5
         [HttpGet("{id}")]
         public async Task<ActionResult<Route>> GetRoute(int id)
         {
-            var route = await _context.Routes.FindAsync(id);
+            var route = await _context.Routes
+                .Include(r => r.Transport)
+                .Include(r => r.Trips)
+                .FirstOrDefaultAsync(r => r.RouteId == id);
 
             if (route == null)
             {

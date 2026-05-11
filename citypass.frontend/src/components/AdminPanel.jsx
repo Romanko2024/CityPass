@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import AdminTables from './AdminTables'; // Винесемо таблицю в окремий файл
+import AdminTables from './AdminTables';
 import AdminQueries from './AdminQueries';
 
 const AdminPanel = ({ data, currentTable, onTableChange, onDelete, onExecuteQuery }) => {
-    const [subTab, setSubTab] = useState('tables'); // 'tables' або 'queries'
+    const [subTab, setSubTab] = useState('tables');
 
     return (
         <div className="card shadow-sm p-4 border-0">
@@ -40,7 +40,28 @@ const AdminPanel = ({ data, currentTable, onTableChange, onDelete, onExecuteQuer
                     <AdminTables data={data} onDelete={onDelete} currentTable={currentTable} />
                 </>
             ) : (
-                <AdminQueries onExecuteQuery={onExecuteQuery} />
+                    <div>
+                        <AdminQueries onExecuteQuery={onExecuteQuery} />
+
+                        {currentTable.startsWith('Результат:') && data.length > 0 && (
+                            <div className="mt-4">
+                                <h5 className="text-info border-bottom pb-2">{currentTable}</h5>
+                                <div className="list-group">
+                                    {data.map((item, idx) => (
+                                        <div key={item.id || idx} className="list-group-item list-group-item-action">
+                                            <div className="d-flex w-100 justify-content-between">
+                                                <h6 className="mb-1">{item.label}</h6>
+                                                <small className="text-muted">ID: {item.id}</small>
+                                            </div>
+                                            <p className="mb-1 text-secondary" style={{ fontSize: '0.9rem' }}>
+                                                {item.subLabel}
+                                            </p>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
             )}
         </div>
     );

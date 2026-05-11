@@ -102,8 +102,14 @@ function App() {
     if (loading) return <div className="p-5 text-center">Завантаження...</div>;
 
     const handleExecuteQuery = async (queryId, param) => {
-        let url = `${API_URL}/Admin/Queries/${queryId}`;
-        if (param) url += `?param=${param}`;
+    let url = `${API_URL}/Admin/Queries/${queryId}`;
+    
+    if (queryId === 'q2' && param.includes(',')) {
+        const [min, max] = param.split(',');
+        url += `?min=${min}&max=${max}`;
+    } else if (param) {
+        url += `?param=${param}`;
+    }
 
         try {
             const res = await fetch(url);

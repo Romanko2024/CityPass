@@ -34,18 +34,17 @@ namespace CityPass.Controllers
         // 2. Запит на вибірку з використанням «between....and».
         //параметри min/max, якщо вони є, або стандартний діапазон
         [HttpGet("Queries/q2")]
-        [HttpGet("Queries/search-trips")]
         public async Task<IActionResult> GetQ2([FromQuery] string min, [FromQuery] string max)
         {
             decimal minVal = decimal.TryParse(min, out var resMin) ? resMin : 10;
             decimal maxVal = decimal.TryParse(max, out var resMax) ? resMax : 20;
 
             var result = await _context.Trips
-                .Include(t => t.Route) // Підтягуємо об'єкт маршруту
+                .Include(t => t.Route)
                 .Where(t => t.FinalPrice >= minVal && t.FinalPrice <= maxVal)
                 .Select(t => new {
                     Id = t.TripId,
-                    Label = $"Поїздка на маршруті {t.Route.RouteNumber}", // Змінено на t.Route.RouteNumber
+                    Label = $"Поїздка на маршруті №{t.Route.RouteNumber}",
                     SubLabel = $"Ціна: {t.FinalPrice} ₴"
                 })
                 .ToListAsync();
@@ -56,13 +55,14 @@ namespace CityPass.Controllers
         [HttpGet("Queries/q3")]
         public async Task<IActionResult> GetQ3()
         {
-            var targetIds = new List<int> { 1, 3 };
-            var result = await _context.Routes
-                .Where(r => targetIds.Contains(r.TransportId))
-                .Select(r => new {
-                    Id = r.RouteId,
-                    Label = $"Маршрут {r.RouteNumber}",
-                    SubLabel = $"Тип транспорту ID: {r.TransportId}"
+            var targetCategories = new[] { "Пільговий", "Студент" };
+
+            var result = await _context.Passengers
+                .Where(p => p.PassengerCategories.Any(pc => targetCategories.Contains(pc.Category.Name)))
+                .Select(p => new {
+                    Id = p.PassengerId,
+                    Label = p.FullName,
+                    SubLabel = "Категорія: Пільговик або Студент"
                 })
                 .ToListAsync();
             return Ok(result);
@@ -89,14 +89,19 @@ namespace CityPass.Controllers
         [HttpGet("Queries/q5")]
         public async Task<IActionResult> GetQ5()
         {
-            var result = await _context.Transports
-                .Where(tr => tr.Type == "Автобус" && tr.TransportID > 100)
+            var transports = await _context.Transports
+                .Where(tr => tr.Type == "Автобус")
+                .ToListAsync();
+
+            var result = transports
+                .Where(tr => int.TryParse(tr.BoardNumber, out var num) && num > 100)
                 .Select(tr => new {
                     Id = tr.TransportID,
-                    Label = tr.Type,
-                    SubLabel = $"Борт: {tr.BoardNumber} (Фільтр: Тип ТА ID)"
+                    Label = $"{tr.Type} (Борт №{tr.BoardNumber})",
+                    SubLabel = "Фільтр: Тип='Автобус' ТА Номер > 100"
                 })
-                .ToListAsync();
+                .ToList();
+
             return Ok(result);
         }
 
@@ -191,11 +196,11 @@ namespace CityPass.Controllers
         {
             var result = await _context.Trips
                 .Include(t => t.Route)
-                .GroupBy(t => t.Route.RouteNumber) // Групуємо по номеру з таблиці Routes
+                .GroupBy(t => t.Route.RouteNumber)
                 .Select(g => new {
-                    Id = 0,
+                    Id = g.First().RouteId,
                     Label = $"Маршрут №{g.Key}",
-                    SubLabel = $"Поїздок: {g.Count()} | Виручка: {g.Sum(x => x.FinalPrice)} ₴"
+                    SubLabel = $"Всього зароблено: {g.Sum(t => t.FinalPrice)} ₴"
                 })
                 .ToListAsync();
             return Ok(result);
@@ -366,7 +371,20 @@ namespace CityPass.Controllers
         }
 
         // --- ГРУПА 4: ПІДЗАПИТИ ---
-
+        // 21. Пасажири, що належать до певної категорії (наприклад, "Студент")
+        [HttpGet("Queries/q21")]
+        public async Task<IActionResult> GetQ21([FromQuery] string categoryName = "Студент")
+        {
+            var result = await _context.Passengers
+                .Where(p => p.PassengerCategories.Any(pc => pc.Category.Name == categoryName))
+                .Select(p => new {
+                    Id = p.PassengerId,
+                    Label = p.FullName ?? "Анонім",
+                    SubLabel = $"Категорія: {categoryName}"
+                })
+                .ToListAsync();
+            return Ok(result);
+        }
         // 22. Запит з використанням підзапита з використанням (=, <, >).
         //всі поїздки, вартість яких вища за середню вартість по всій системі.
         [HttpGet("Queries/q22")]
@@ -391,16 +409,19 @@ namespace CityPass.Controllers
         [HttpGet("Queries/q23")]
         public async Task<IActionResult> GetQ23()
         {
-            var result = await _context.Passengers
-                .Where(p => _context.Trips
-                    .Where(t => t.PassengerId == p.PassengerId)
-                    .Any(t => t.FinalPrice == _context.Trips.Max(x => x.FinalPrice)))
-                .Select(p => new {
-                    Id = p.PassengerId,
-                    Label = p.FullName,
-                    SubLabel = "Власник найдорожчої поїздки в системі"
+            var maxPrice = await _context.Trips.MaxAsync(t => t.FinalPrice);
+
+            var result = await _context.Trips
+                .Where(t => t.FinalPrice == maxPrice)
+                .Include(t => t.Passenger)
+                .Select(t => new {
+                    Id = t.PassengerId,
+                    Label = t.Passenger != null ? t.Passenger.FullName : "Анонімна поїздка",
+                    SubLabel = $"Максимальна вартість: {t.FinalPrice} ₴"
                 })
+                .Take(1)
                 .ToListAsync();
+
             return Ok(result);
         }
 
@@ -425,20 +446,22 @@ namespace CityPass.Controllers
         [HttpGet("Queries/q25")]
         public async Task<IActionResult> GetQ25()
         {
-            var minTramBoard = await _context.Transports
-                .Where(tr => tr.Type == "Трамвай")
-                .Select(tr => Convert.ToInt32(tr.BoardNumber))
-                .OrderBy(n => n)
-                .FirstOrDefaultAsync();
-
-            var result = await _context.Transports
-                .Where(tr => Convert.ToInt32(tr.BoardNumber) > minTramBoard)
-                .Select(tr => new {
-                    Id = tr.TransportID,
-                    Label = $"{tr.Type} №{tr.BoardNumber}",
-                    SubLabel = $"Бортовий номер ({tr.BoardNumber}) більший за мінімальний трамвайний ({minTramBoard})"
-                })
+            // Отримуємо мінімальний номер борту серед трамваїв
+            var tramNumbers = await _context.Transports
+                .Where(t => t.Type == "Трамвай")
+                .Select(t => t.BoardNumber)
                 .ToListAsync();
+            if (!tramNumbers.Any()) return Ok(new List<object>());
+            var minTramBoard = tramNumbers.Select(n => int.TryParse(n, out var v) ? v : int.MaxValue).Min();
+            var allTransports = await _context.Transports.ToListAsync();
+            var result = allTransports
+                .Where(t => int.TryParse(t.BoardNumber, out var n) && n > minTramBoard)
+                .Select(t => new {
+                    Id = t.TransportID,
+                    Label = $"{t.Type} №{t.BoardNumber}",
+                    SubLabel = $"Бортовий номер вищий за {minTramBoard}"
+                })
+                .ToList();
 
             return Ok(result);
         }

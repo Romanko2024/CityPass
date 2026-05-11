@@ -25,7 +25,12 @@ namespace CityPass.Controllers
         [HttpGet]
         public async Task<ActionResult<IEnumerable<Trip>>> GetTrips()
         {
-            return await _context.Trips.ToListAsync();
+            return await _context.Trips
+                .Include(t => t.Passenger)
+                .Include(t => t.Transport)
+                .Include(t => t.Route)
+                .OrderByDescending(t => t.TripDateTime)
+                .ToListAsync();
         }
 
         // GET: api/Trips/5

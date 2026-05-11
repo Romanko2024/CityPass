@@ -123,6 +123,7 @@ namespace CityPass.Controllers
         public async Task<ActionResult<IEnumerable<Trip>>> GetPassengerHistory(int id)
         {
             var trips = await _context.Trips
+                .Include(t => t.Route)
                 .Where(t => t.PassengerId == id)
                 .OrderByDescending(t => t.TripDateTime)
                 .ToListAsync();
