@@ -55,14 +55,15 @@ namespace CityPass.Controllers
         [HttpGet("Queries/q3")]
         public async Task<IActionResult> GetQ3()
         {
-            var targetCategories = new[] { "Пільговий", "Студент" };
+            // 1 - Студентська, 6 - Пенсійна, 7 - УБД
+            var targetIds = new[] { 1, 6, 7 };
 
             var result = await _context.Passengers
-                .Where(p => p.PassengerCategories.Any(pc => targetCategories.Contains(pc.Category.Name)))
+                .Where(p => p.PassengerCategories.Any(pc => targetIds.Contains(pc.CategoryId)))
                 .Select(p => new {
                     Id = p.PassengerId,
                     Label = p.FullName,
-                    SubLabel = "Категорія: Пільговик або Студент"
+                    SubLabel = "Статус: Має активну пільгову категорію"
                 })
                 .ToListAsync();
             return Ok(result);
@@ -85,23 +86,19 @@ namespace CityPass.Controllers
         }
 
         // 5. Запит на вибірку з двома умовами через «and».
-        //транспорт конкретного типу (напр. Автобус), номер борту якого > 100
+        //транспорт конкретного типу (напр. Автобус), номер маршруту якого > 100
         [HttpGet("Queries/q5")]
         public async Task<IActionResult> GetQ5()
         {
-            var transports = await _context.Transports
-                .Where(tr => tr.Type == "Автобус")
-                .ToListAsync();
-
-            var result = transports
-                .Where(tr => int.TryParse(tr.BoardNumber, out var num) && num > 100)
-                .Select(tr => new {
-                    Id = tr.TransportID,
-                    Label = $"{tr.Type} (Борт №{tr.BoardNumber})",
-                    SubLabel = "Фільтр: Тип='Автобус' ТА Номер > 100"
+            var result = await _context.Routes
+                .Include(r => r.Transport)
+                .Where(r => r.RouteNumber.Contains("1")) // Наприклад, всі де є одиниця
+                .Select(r => new {
+                    Id = r.RouteId,
+                    Label = $"Маршрут №{r.RouteNumber}",
+                    SubLabel = $"Тип: {r.Transport.Type} | Напрямок: {r.Description}"
                 })
-                .ToList();
-
+                .ToListAsync();
             return Ok(result);
         }
 
@@ -306,24 +303,29 @@ namespace CityPass.Controllers
         }
 
         // 17. Запит з використанням RIGHT JOIN.
-        //В Entity Framework немає прямого методу RightJoin. 
-        //реалізуємо логіку, міняючи таблиці місцями (Transports -> Trips) через GroupJoin.
-
         //вивести весь транспорт, навіть якщо він ще не здійснив жодної поїздки.
         [HttpGet("Queries/q17")]
         public async Task<IActionResult> GetQ17()
         {
-            var result = await _context.Transports
-                .GroupJoin(_context.Trips.Include(t => t.Route),
-                    tr => tr.TransportID,
-                    t => t.TransportId,
-                    (tr, trips) => new { tr, trips })
-                .SelectMany(x => x.trips.DefaultIfEmpty(), (x, t) => new {
-                    Id = x.tr.TransportID,
-                    Label = $"{x.tr.Type} (№{x.tr.BoardNumber})",
-                    SubLabel = t == null ? "🛑 Немає записів про поїздки" : $"✅ Остання поїздка на маршруті {t.Route.RouteNumber}"
+            // LeftTable.RightJoin(RightTable, KeySelectorLeft, KeySelectorRight, ResultSelector)
+            var result = await _context.Trips
+                .Include(t => t.Route)
+                .RightJoin(
+                    _context.Transports,
+                    trip => trip.TransportId,
+                    transport => transport.TransportID,
+                    (trip, transport) => new { trip, transport }
+                )
+                .Select(x => new {
+                    Id = x.transport.TransportID,
+                    Label = $"{x.transport.Type} (№{x.transport.BoardNumber})",
+                    SubLabel = x.trip == null
+                        ? "🛑 Транспорт на стоянці (жодної поїздки)"
+                        : $"✅ Активний. Остання поїздка зафіксована на маршруті {x.trip.Route.RouteNumber}"
                 })
+                .Distinct()
                 .ToListAsync();
+
             return Ok(result);
         }
 
@@ -333,15 +335,13 @@ namespace CityPass.Controllers
         public async Task<IActionResult> GetQ18()
         {
             var result = await _context.Trips
-                .Join(_context.Transports,
-                    t => t.TransportId,
-                    tr => tr.TransportID,
-                    (t, tr) => new { t, tr })
-                .Where(x => x.t.FinalPrice > 10)
-                .Select(x => new {
-                    Id = x.t.TripId,
-                    Label = $"Борт №{x.tr.BoardNumber} ({x.tr.Type})",
-                    SubLabel = $"Дорога поїздка: {x.t.FinalPrice} ₴"
+                .Include(t => t.Transport)
+                .Where(t => t.FinalPrice > 10)
+                .OrderByDescending(t => t.FinalPrice)
+                .Select(t => new {
+                    Id = t.TripId,
+                    Label = $"Борт №{t.Transport.BoardNumber} ({t.Transport.Type})",
+                    SubLabel = $"💰 Дорога поїздка: {t.FinalPrice} ₴ (Маршрут №{t.Route.RouteNumber})"
                 })
                 .ToListAsync();
             return Ok(result);
@@ -369,18 +369,42 @@ namespace CityPass.Controllers
                 .ToListAsync();
             return Ok(result);
         }
-
+        // --- ЗАПИТ 20: INNER JOIN + Aggregate (НОВИЙ) ---
+        [HttpGet("Queries/q20")]
+        public async Task<IActionResult> GetQ20()
+        {
+            //рахуємо загальну виручку по кожному маршруту через Join
+            var result = await _context.Trips
+                .Join(_context.Routes,
+                      t => t.RouteId,
+                      r => r.RouteId,
+                      (t, r) => new { t, r })
+                .GroupBy(x => x.r.RouteNumber)
+                .Select(group => new {
+                    Id = 0,
+                    Label = $"Маршрут №{group.Key}",
+                    SubLabel = $"Сумарна виручка: {group.Sum(x => x.t.FinalPrice)} ₴ (Поїздок: {group.Count()})"
+                })
+                .ToListAsync();
+            return Ok(result);
+        }
         // --- ГРУПА 4: ПІДЗАПИТИ ---
         // 21. Пасажири, що належать до певної категорії (наприклад, "Студент")
         [HttpGet("Queries/q21")]
-        public async Task<IActionResult> GetQ21([FromQuery] string categoryName = "Студент")
+        public async Task<IActionResult> GetQ21([FromQuery] string param)
         {
+            if (string.IsNullOrEmpty(param)) return Ok(new List<object>());
+
+            //"Студентська", "Пенсійна" або "УБД"
+            var search = param.Trim().ToLower();
+
             var result = await _context.Passengers
-                .Where(p => p.PassengerCategories.Any(pc => pc.Category.Name == categoryName))
+                .Where(p => p.PassengerCategories.Any(pc =>
+                    pc.Category.Name.ToLower().Contains(search)))
                 .Select(p => new {
                     Id = p.PassengerId,
-                    Label = p.FullName ?? "Анонім",
-                    SubLabel = $"Категорія: {categoryName}"
+                    Label = p.FullName,
+                    SubLabel = $"Категорія: {param}"
                 })
                 .ToListAsync();
             return Ok(result);

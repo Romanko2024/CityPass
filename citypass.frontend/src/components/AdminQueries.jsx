@@ -52,6 +52,11 @@ const AdminQueries = ({ onExecuteQuery }) => {
             hasInput: true,
             placeholder: 'Прізвище...'
         },
+        {
+            id: 'q20',
+            label: '20. Аналіз виручки',
+            description: 'INNER JOIN + SUM: Дохід по кожному маршруту'
+        },
 
         // --- ГРУПА 4: ПІДЗАПИТИ ---
         {
