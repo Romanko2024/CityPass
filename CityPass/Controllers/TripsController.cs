@@ -168,7 +168,8 @@ namespace CityPass.Controllers
                 TripDateTime = DateTime.UtcNow,
                 StandardPriceAtMoment = settings.BasePrice,
                 FinalPrice = priceToPay,
-                IsAnonymousTrip = request.IsAnonymousTrip
+                IsAnonymousTrip = request.IsAnonymousTrip,
+                AppliedCategoryId = selectedCategory?.CategoryId
             };
 
             _context.Trips.Add(trip);
@@ -201,8 +202,9 @@ namespace CityPass.Controllers
         public async Task<ActionResult> Verify(string uid, [FromQuery] int transportId)
         {
             var passenger = await _context.Passengers
-                .Include(p => p.Wallet)
-                .FirstOrDefaultAsync(p => p.CardUID == uid);
+        .Include(p => p.Wallet)
+        .Include(p => p.PassengerCategories).ThenInclude(pc => pc.Category)
+        .FirstOrDefaultAsync(p => p.CardUID == uid);
 
             if (passenger == null)
                 return NotFound(new { status = "Invalid", message = "Картку не знайдено в системі" });
@@ -211,11 +213,24 @@ namespace CityPass.Controllers
             string boardInfo = currentTransport?.BoardNumber ?? "невідомо";
 
             var lastTrip = await _context.Trips
+                .Include(t => t.AppliedCategory)
                 .Where(t => t.PassengerId == passenger.PassengerId && t.TransportId == transportId)
                 .OrderByDescending(t => t.TripDateTime)
                 .FirstOrDefaultAsync();
 
             bool isValid = lastTrip != null && (DateTime.UtcNow - lastTrip.TripDateTime).TotalMinutes <= 60;
+
+            object? passengerDetails = null;
+            if (isValid && lastTrip?.AppliedCategoryId != null)
+            {
+                passengerDetails = new
+                {
+                    passenger.FullName,
+                    passenger.CardUID,
+                    Categories = passenger.PassengerCategories.Select(pc => pc.Category.Name).ToList(),
+                    AppliedBenefit = lastTrip.AppliedCategory?.Name
+                };
+            }
 
             var recentTrips = await _context.Trips
                 .Include(t => t.Route)
@@ -239,9 +254,10 @@ namespace CityPass.Controllers
             {
                 status = isValid ? "Valid" : "Invalid",
                 message = isValid
-                    ? $"✅ Оплата підтверджена для ТЗ {boardInfo} о {lastTrip.TripDateTime.ToLocalTime():HH:mm}"
-                    : $"❌ Оплата для ТЗ {boardInfo} не знайдена",
+                ? $"✅ Оплата підтверджена для ТЗ {boardInfo} о {lastTrip.TripDateTime.ToLocalTime():HH:mm}"
+                : $"❌ Оплата для ТЗ {boardInfo} не знайдена",
                 passengerName = passenger.FullName,
+                passengerDetails = passengerDetails,
                 recentTrips = recentTrips
             });
         }

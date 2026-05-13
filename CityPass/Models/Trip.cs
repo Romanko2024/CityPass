@@ -21,5 +21,8 @@ public class Trip
     public decimal FinalPrice { get; set; }
 
     public bool IsAnonymousTrip { get; set; } = false;
+    public int? AppliedCategoryId { get; set; }
+    public Category? AppliedCategory { get; set; }
+
     public List<TripDiscount> TripDiscounts { get; set; } = new();
 }

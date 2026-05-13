@@ -41,9 +41,22 @@ const Controller = ({ allVehicles, onVerify }) => {
                     <button className="btn btn-dark" onClick={handleCheck}>ПЕРЕВІРИТИ</button>
                 </div>
                 {result && (
-                    <div className={`alert ${result.status === 'Valid' ? 'alert-success' : 'alert-danger shadow-sm'}`}>
-                        <h2 className="fw-bold">{result.status === 'Valid' ? "✅ ОПЛАЧЕНО" : "❌ НЕ ОПЛЕЧЕНО"}</h2>
-                        <p className="mb-0">{result.message}</p>
+                    <div className={`alert ${result.status === 'Valid' ? 'alert-success' : 'alert-danger shadow-sm'} text-start`}>
+                        <div className="text-center">
+                            <h2 className="fw-bold">{result.status === 'Valid' ? "✅ ОПЛАЧЕНО" : "❌ НЕ ОПЛАЧЕНО"}</h2>
+                            <p>{result.message}</p>
+                        </div>
+                        {result.status === 'Valid' && result.passengerDetails && (
+                            <div className="mt-3 p-3 bg-white bg-opacity-50 rounded border border-success">
+                                <h6 className="fw-bold text-success border-bottom pb-1">📄 КАРТКА ПІЛЬГОВИКА</h6>
+                                <div className="small">
+                                    <div><strong>ПІБ:</strong> {result.passengerDetails.fullName}</div>
+                                    <div><strong>UID:</strong> {result.passengerDetails.cardUID}</div>
+                                    <div><strong>Використана пільга:</strong> <span className="badge bg-success">{result.passengerDetails.appliedBenefit}</span></div>
+                                    <div className="mt-1"><strong>Всі пільги:</strong> {result.passengerDetails.categories.join(", ")}</div>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 )}
             </div>
