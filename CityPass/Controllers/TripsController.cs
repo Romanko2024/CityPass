@@ -138,12 +138,13 @@ namespace CityPass.Controllers
                 }
                 else
                 {
-                    var lastTrip = await _context.Trips
-                        .Where(t => t.PassengerId == passenger.PassengerId)
+                    var lastFullPriceTrip = await _context.Trips
+                        .Where(t => t.PassengerId == passenger.PassengerId &&
+                               !_context.TripDiscounts.Any(td => td.TripId == t.TripId && td.DiscountId == 1))
                         .OrderByDescending(t => t.TripDateTime)
                         .FirstOrDefaultAsync();
 
-                    if (lastTrip != null && (DateTime.UtcNow - lastTrip.TripDateTime).TotalMinutes <= settings.TransferTimeLimit)
+                    if (lastFullPriceTrip != null && (DateTime.UtcNow - lastFullPriceTrip.TripDateTime).TotalMinutes <= settings.TransferTimeLimit)
                     {
                         priceToPay = settings.TransferPrice;
                         appliedDiscounts.Add(1);
